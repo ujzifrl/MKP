@@ -860,9 +860,8 @@ function Pastes({ session }) {
   );
 }
 
-function Users() {
+function Users({ activeUsers = [] }) {
   const [users, setUsers] = useState([]);
-  const [activeUsers, setActiveUsers] = useState([]);
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {
@@ -870,8 +869,6 @@ function Users() {
       setMessage("Supabase is not configured yet.");
       return;
     }
-
-    let channel;
 
     async function loadUsers() {
       const { data, error } = await supabase
@@ -888,56 +885,7 @@ function Users() {
       setMessage("");
     }
 
-    async function setupPresence() {
-      await loadUsers();
-
-      channel = supabase.channel("mkp-online-users", {
-        config: {
-          presence: {
-            key: "users-page"
-          }
-        }
-      });
-
-      const updateActiveUsers = () => {
-        const state = channel.presenceState();
-
-        const ids = Object.values(state)
-          .flat()
-          .map((presence) => presence.user_id)
-          .filter(Boolean);
-
-        setActiveUsers([...new Set(ids)]);
-      };
-
-      channel.on(
-        "presence",
-        { event: "sync" },
-        updateActiveUsers
-      );
-
-      channel.on(
-        "presence",
-        { event: "join" },
-        updateActiveUsers
-      );
-
-      channel.on(
-        "presence",
-        { event: "leave" },
-        updateActiveUsers
-      );
-
-      await channel.subscribe();
-    }
-
-    setupPresence();
-
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-    };
+    loadUsers();
   }, []);
 
   return (
@@ -956,7 +904,9 @@ function Users() {
 
       {!message && users.length === 0 && (
         <div className="panel">
-          <p className="muted">No users found.</p>
+          <p className="muted">
+            No users found.
+          </p>
         </div>
       )}
 
@@ -1011,8 +961,7 @@ function Users() {
       )}
     </section>
   );
-}
-function AdminPanel({ session, role }) {
+}function AdminPanel({ session, role }) {
   const [users, setUsers] = useState([]);
   const [pastes, setPastes] = useState([]);
   const [selectedPaste, setSelectedPaste] =
@@ -1028,7 +977,7 @@ function AdminPanel({ session, role }) {
     useState(null);
 
   const canAccessAdmin =
-    ADMIN_ROLES.includes(role);
+  ADMIN_ROLES.includes(role);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -1554,6 +1503,8 @@ function App() {
   const [role, setRole] =
     useState(null);
 
+const [activeUsers, setActiveUsers] = 
+   useState([]);
   /*
    * Get the logged-in user's profile role.
    */
@@ -1618,34 +1569,64 @@ function App() {
    * their presence automatically.
    */
   useEffect(() => {
-    if (!supabase || !session?.user?.id) {
-      return;
+  if (!supabase || !session?.user?.id) {
+    setActiveUsers([]);
+    return;
+  }
+
+  const channel = supabase.channel("mkp-online-users", {
+    config: {
+      presence: {
+        key: session.user.id
+      }
     }
+  });
 
-    const channel = supabase.channel(
-      "mkp-online-users",
-      {
-        config: {
-          presence: {
-            key: session.user.id
-          }
-        }
-      }
-    );
+  const updatePresence = () => {
+    const state = channel.presenceState();
 
-    channel.subscribe(async status => {
-      if (status === "SUBSCRIBED") {
-        await channel.track({
-          user_id: session.user.id
-        });
-      }
-    });
+    const ids = Object.values(state)
+      .flat()
+      .map((presence) => presence.user_id)
+      .filter(Boolean);
 
-    return () => {
-      channel.untrack();
-      supabase.removeChannel(channel);
-    };
-  }, [session?.user?.id]);
+    setActiveUsers([...new Set(ids)]);
+  };
+
+  channel.on(
+    "presence",
+    { event: "sync" },
+    updatePresence
+  );
+
+  channel.on(
+    "presence",
+    { event: "join" },
+    updatePresence
+  );
+
+  channel.on(
+    "presence",
+    { event: "leave" },
+    updatePresence
+  );
+
+  channel.subscribe(async (status) => {
+    if (status === "SUBSCRIBED") {
+      await channel.track({
+        user_id: session.user.id
+      });
+
+      updatePresence();
+    }
+  });
+
+  return () => {
+    channel.untrack();
+    supabase.removeChannel(channel);
+    setActiveUsers([]);
+  };
+}, [session?.user?.id]);
 
   return (
     <Layout
@@ -1689,9 +1670,11 @@ function App() {
         />
 
         <Route
-          path="/users"
-          element={<Users />}
-        />
+  path="/users"
+  element={
+    <Users activeUsers={activeUsers} />
+  }
+/>
 
         <Route
           path="/admin"
