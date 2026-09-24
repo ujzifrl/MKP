@@ -2036,22 +2036,24 @@ const [activeUsers, setActiveUsers] =
           }
         />
 
-        <Route
+                <Route
           path="/support"
           element={<Support />}
+        />
+
+        <Route
+          path="/settings"
+          element={
+            session ? (
+              <Settings session={session} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
       </Routes>
     </Layout>
   );
 }
-<Route
-  path="/settings"
-  element={
-    session ? (
-      <Settings session={session} />
-    ) : (
-      <Navigate to="/login" replace />
-    )
-  }
-/>
+
 export default App;
