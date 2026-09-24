@@ -1,6 +1,6 @@
 import React from "react";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 
 const tracks = [
@@ -21,7 +21,9 @@ const roster = [
   ["Ashes", "Member"]
 ];
 
-function Layout({ children, session }) {
+const ADMIN_ROLES = ["admin", "Founder", "Owner", "Editor"];
+
+function Layout({ children, session, role }) {
   const [musicOpen, setMusicOpen] = useState(false);
   const [track, setTrack] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -33,14 +35,17 @@ function Layout({ children, session }) {
     navigate("/");
   }
 
+  const canAccessAdmin = session && ADMIN_ROLES.includes(role);
+
   return (
-    <div className="site-shell">
-      <div className="scanlines" />
-      <div className="particles">
-        {Array.from({ length: 34 }).map((_, i) => (
-          <span key={i} className={`particle p${i}`} />
-        ))}
-      </div>
+  <div className="site-shell">
+    <div className="scanlines"></div>
+
+    <div className="particles">
+      {Array.from({ length: 34 }).map((_, i) => {
+        return <span key={i} className={"particle p" + i}></span>;
+      })}
+    </div>
 
       <header className="navbar">
         <NavLink to="/" className="brand glitch" data-text="MKP">
@@ -52,6 +57,11 @@ function Layout({ children, session }) {
           <NavLink to="/add-paste">Add Paste</NavLink>
           <NavLink to="/pastes">Pastes</NavLink>
           <NavLink to="/users">Users</NavLink>
+
+          {canAccessAdmin && (
+            <NavLink to="/admin">Admin Panel</NavLink>
+          )}
+
           <NavLink to="/roster">MKP Roster 2026</NavLink>
           <NavLink to="/terms">TOS</NavLink>
           <NavLink to="/support">Support</NavLink>
@@ -63,7 +73,10 @@ function Layout({ children, session }) {
               Logout
             </button>
           ) : (
-            <button className="ghost-btn" onClick={() => navigate("/login")}>
+            <button
+              className="ghost-btn"
+              onClick={() => navigate("/login")}
+            >
               Login
             </button>
           )}
@@ -106,7 +119,9 @@ function MusicPlayer({ tracks, track, setTrack, playing, setPlaying }) {
     let cancelled = false;
 
     const loadYouTubeAPI = () => {
-      if (window.YT && window.YT.Player) return Promise.resolve();
+      if (window.YT && window.YT.Player) {
+        return Promise.resolve();
+      }
 
       return new Promise((resolve) => {
         const previous = window.onYouTubeIframeAPIReady;
@@ -133,32 +148,41 @@ function MusicPlayer({ tracks, track, setTrack, playing, setPlaying }) {
       if (cancelled || !playerRef.current) return;
 
       if (!ytPlayerRef.current) {
-        ytPlayerRef.current = new window.YT.Player(playerRef.current, {
-          videoId: current.id,
-          playerVars: {
-            autoplay: 0,
-            controls: 1,
-            rel: 0,
-            modestbranding: 1
-          },
-          events: {
-            onReady: (event) => {
-              event.target.setVolume(volume);
+        ytPlayerRef.current = new window.YT.Player(
+          playerRef.current,
+          {
+            videoId: current.id,
+            playerVars: {
+              autoplay: 0,
+              controls: 1,
+              rel: 0,
+              modestbranding: 1
             },
-            onStateChange: (event) => {
-              if (event.data === window.YT.PlayerState.PLAYING) {
-                setPlaying(true);
-              }
+            events: {
+              onReady: (event) => {
+                event.target.setVolume(volume);
+              },
 
-              if (
-                event.data === window.YT.PlayerState.PAUSED ||
-                event.data === window.YT.PlayerState.ENDED
-              ) {
-                setPlaying(false);
+              onStateChange: (event) => {
+                if (
+                  event.data ===
+                  window.YT.PlayerState.PLAYING
+                ) {
+                  setPlaying(true);
+                }
+
+                if (
+                  event.data ===
+                    window.YT.PlayerState.PAUSED ||
+                  event.data ===
+                    window.YT.PlayerState.ENDED
+                ) {
+                  setPlaying(false);
+                }
               }
             }
           }
-        });
+        );
       } else {
         ytPlayerRef.current.loadVideoById(current.id);
         ytPlayerRef.current.setVolume(volume);
@@ -177,7 +201,9 @@ function MusicPlayer({ tracks, track, setTrack, playing, setPlaying }) {
   useEffect(() => {
     const player = ytPlayerRef.current;
 
-    if (!player || typeof player.setVolume !== "function") return;
+    if (!player || typeof player.setVolume !== "function") {
+      return;
+    }
 
     player.setVolume(Number(volume));
   }, [volume]);
@@ -350,10 +376,11 @@ function Login() {
 
   async function submit(e) {
     e.preventDefault();
-    setMessage("");
 
     if (!supabase) {
-      return setMessage("Supabase is not configured yet.");
+      return setMessage(
+        "Supabase is not configured yet. Follow SETUP.md."
+      );
     }
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -361,38 +388,9 @@ function Login() {
       password
     });
 
-    if (error) {
-      return setMessage(error.message);
-    }
+    if (error) return setMessage(error.message);
 
     navigate("/");
-  }
-
-  async function forgotPassword() {
-    setMessage("");
-
-    if (!identifier) {
-      return setMessage("Enter your email address first.");
-    }
-
-    if (!supabase) {
-      return setMessage("Supabase is not configured yet.");
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      identifier,
-      {
-        redirectTo: `${window.location.origin}/reset-password`
-      }
-    );
-
-    if (error) {
-      return setMessage(error.message);
-    }
-
-    setMessage(
-      "Password reset email sent. Check your email."
-    );
   }
 
   return (
@@ -401,15 +399,13 @@ function Login() {
       subtitle="Access your MKP account."
     >
       <form onSubmit={submit} className="form">
-
         <label>
-          Email
+          Username Or Email
 
           <input
-            type="email"
             value={identifier}
             onChange={e => setIdentifier(e.target.value)}
-            placeholder="your@email.com"
+            placeholder="username or email"
             required
           />
         </label>
@@ -433,14 +429,6 @@ function Login() {
           LOGIN
         </button>
 
-        <button
-          className="link-btn"
-          type="button"
-          onClick={forgotPassword}
-        >
-          Forgot Password?
-        </button>
-
         {message && (
           <div className="form-message">
             {message}
@@ -454,108 +442,6 @@ function Login() {
         >
           Create an account
         </button>
-
-      </form>
-    </AuthPage>
-  );
-}
-
-function ResetPassword() {
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [message, setMessage] = useState("");
-  const [success, setSuccess] = useState(false);
-  const navigate = useNavigate();
-
-  async function submit(e) {
-    e.preventDefault();
-
-    setMessage("");
-    setSuccess(false);
-
-    if (password.length < 8) {
-      return setMessage(
-        "Password must be at least 8 characters."
-      );
-    }
-
-    if (password !== confirm) {
-      return setMessage("Passwords do not match.");
-    }
-
-    if (!supabase) {
-      return setMessage("Supabase is not configured yet.");
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      password
-    });
-
-    if (error) {
-      return setMessage(error.message);
-    }
-
-    setSuccess(true);
-    setMessage("Password changed successfully.");
-
-    setPassword("");
-    setConfirm("");
-  }
-
-  return (
-    <AuthPage
-      title="RESET PASSWORD"
-      subtitle="Create a new password for your MKP account."
-    >
-      <form onSubmit={submit} className="form">
-
-        <label>
-          New Password
-
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="new password"
-            required
-          />
-        </label>
-
-        <label>
-          Confirm New Password
-
-          <input
-            type="password"
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            placeholder="confirm password"
-            required
-          />
-        </label>
-
-        <button
-          className="primary-btn full"
-          type="submit"
-        >
-          CHANGE PASSWORD
-        </button>
-
-        {message && (
-          <div className="form-message">
-            {message}
-          </div>
-        )}
-
-        {success && (
-          <button
-            className="link-btn"
-            type="button"
-            onClick={() => navigate("/login")}
-          >
-            Return to Login
-          </button>
-        )}
-
       </form>
     </AuthPage>
   );
@@ -570,6 +456,7 @@ function Register() {
   });
 
   const [message, setMessage] = useState("");
+  const navigate = useNavigate();
 
   async function submit(e) {
     e.preventDefault();
@@ -586,42 +473,32 @@ function Register() {
 
     if (!supabase) {
       return setMessage(
-        "Supabase is not configured yet."
+        "Supabase is not configured yet. Follow SETUP.md."
       );
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      options: {
-        data: {
-          username: form.username
+    const { data, error } =
+      await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            username: form.username
+          }
         }
-      }
-    });
+      });
 
-    if (error) {
-      return setMessage(error.message);
-    }
+    if (error) return setMessage(error.message);
 
     if (data.user) {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: data.user.id,
-          username: form.username
-        });
-
-      if (profileError) {
-        console.error(
-          "Profile creation error:",
-          profileError
-        );
-      }
+      await supabase.from("profiles").upsert({
+        id: data.user.id,
+        username: form.username
+      });
     }
 
     setMessage(
-      "Account created. Check your email to verify your account, then log in."
+      "Account created. Check your email to verify your account, then log in and accept the TOS."
     );
   }
 
@@ -631,7 +508,6 @@ function Register() {
       subtitle="Make your MKP account."
     >
       <form onSubmit={submit} className="form">
-
         <label>
           Username
 
@@ -707,7 +583,6 @@ function Register() {
             {message}
           </div>
         )}
-
       </form>
     </AuthPage>
   );
@@ -717,22 +592,15 @@ function AuthPage({ title, subtitle, children }) {
   return (
     <section className="center-page">
       <div className="auth-panel">
+        <div className="eyebrow">MKP // AUTH</div>
 
-        <div className="eyebrow">
-          MKP // AUTH
-        </div>
-
-        <h1
-          className="glitch"
-          data-text={title}
-        >
+        <h1 className="glitch" data-text={title}>
           {title}
         </h1>
 
         <p>{subtitle}</p>
 
         {children}
-
       </div>
     </section>
   );
@@ -756,7 +624,7 @@ function AddPaste({ session }) {
 
     if (!supabase) {
       return setMessage(
-        "Supabase is not configured yet."
+        "Supabase is not configured yet. Follow SETUP.md."
       );
     }
 
@@ -771,20 +639,20 @@ function AddPaste({ session }) {
       "_"
     );
 
-    const path = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
+   const path =
+  session.user.id + "/" + crypto.randomUUID() + "-" + safeName;
 
-    const { error: uploadError } = await supabase
-      .storage
-      .from("pastes")
-      .upload(path, file);
+    const { error: uploadError } =
+      await supabase.storage
+        .from("pastes")
+        .upload(path, file);
 
     if (uploadError) {
       return setMessage(uploadError.message);
     }
 
-    const { error } = await supabase
-      .from("pastes")
-      .insert({
+    const { error } =
+      await supabase.from("pastes").insert({
         user_id: session.user.id,
         title,
         description,
@@ -799,12 +667,14 @@ function AddPaste({ session }) {
     setTitle("");
     setDescription("");
     setFile(null);
-    setMessage("Paste published successfully.");
+
+    setMessage(
+      "Paste published successfully."
+    );
   }
 
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // PUBLISH"
         title="ADD PASTE"
@@ -812,12 +682,7 @@ function AddPaste({ session }) {
       />
 
       <div className="panel narrow">
-
-        <form
-          className="form"
-          onSubmit={submit}
-        >
-
+        <form className="form" onSubmit={submit}>
           <label>
             Title
 
@@ -885,11 +750,8 @@ function AddPaste({ session }) {
               {message}
             </div>
           )}
-
         </form>
-
       </div>
-
     </section>
   );
 }
@@ -902,7 +764,7 @@ function Pastes({ session }) {
     async function load() {
       if (!supabase) {
         return setMessage(
-          "Supabase is not configured yet."
+          "Supabase is not configured yet. Follow SETUP.md."
         );
       }
 
@@ -922,10 +784,8 @@ function Pastes({ session }) {
 
         setPastes(data || []);
       } else {
-        const { data, error } = await query.eq(
-          "visibility",
-          "public"
-        );
+        const { data, error } =
+          await query.eq("visibility", "public");
 
         if (error) {
           return setMessage(error.message);
@@ -942,7 +802,6 @@ function Pastes({ session }) {
 
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // ARCHIVE"
         title="PASTES"
@@ -956,15 +815,14 @@ function Pastes({ session }) {
       )}
 
       <div className="paste-grid">
-
         {pastes.map(p => (
           <article
             className="paste-card"
             key={p.id}
           >
-
             <div className="paste-top">
               <span className="status-dot" />
+
               <span>
                 {p.visibility.toUpperCase()}
               </span>
@@ -973,7 +831,8 @@ function Pastes({ session }) {
             <h3>{p.title}</h3>
 
             <p>
-              {p.description || "No description."}
+              {p.description ||
+                "No description."}
             </p>
 
             <small>
@@ -988,10 +847,8 @@ function Pastes({ session }) {
                   YOU
                 </span>
               )}
-
           </article>
         ))}
-
       </div>
 
       {!message && pastes.length === 0 && (
@@ -999,36 +856,493 @@ function Pastes({ session }) {
           No pastes yet.
         </div>
       )}
-
     </section>
   );
 }
 
 function Users() {
+  const [users, setUsers] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
+  const [message, setMessage] = useState("Loading...");
+
+  useEffect(() => {
+    if (!supabase) {
+      setMessage(
+        "Supabase is not configured yet."
+      );
+      return;
+    }
+
+    let channel;
+
+    async function loadUsers() {
+      const { data, error } =
+        await supabase
+          .from("profiles")
+          .select("id, username, role, created_at")
+          .order("created_at", {
+            ascending: true
+          });
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      setUsers(data || []);
+      setMessage("");
+    }
+
+    async function setupPresence() {
+      await loadUsers();
+
+      channel = supabase.channel(
+        "mkp-online-users",
+        {
+          config: {
+            presence: {
+              key: crypto.randomUUID()
+            }
+          }
+        }
+      );
+
+      channel.on(
+        "presence",
+        { event: "sync" },
+        () => {
+          const state =
+            channel.presenceState();
+
+          const ids = Object.values(state)
+            .flat()
+            .map(user => user.user_id)
+            .filter(Boolean);
+
+          setActiveUsers([
+            ...new Set(ids)
+          ]);
+        }
+      );
+
+      await channel.subscribe();
+    }
+
+    setupPresence();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, []);
+
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // COMMUNITY"
         title="USERS"
-        subtitle="User directory will populate from the profiles table."
+        subtitle="MKP community members and current activity."
       />
 
-      <div className="panel">
-        <p className="muted">
-          The production version can show public profiles,
-          usernames, join dates, and public paste counts here.
-        </p>
-      </div>
+      {message && (
+        <div className="notice">
+          {message}
+        </div>
+      )}
 
+      {!message && users.length === 0 && (
+        <div className="panel">
+          <p className="muted">
+            No users found.
+          </p>
+        </div>
+      )}
+
+      {!message && users.length > 0 && (
+        <div className="panel">
+          <div className="user-list">
+            {users.map(user => {
+              const isActive =
+                activeUsers.includes(user.id);
+
+              return (
+                <div
+                  className="user-row"
+                  key={user.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "20px",
+                    padding: "14px 0",
+                    borderBottom:
+                      "1px solid rgba(255,255,255,0.08)"
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {user.username ||
+                        "Unknown User"}
+                    </strong>
+
+                    <div className="muted">
+                      {user.role || "Member"}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      fontWeight: "700",
+                      fontSize: "13px"
+                    }}
+                  >
+                    <span
+                      style={{
+                        marginRight: "7px"
+                      }}
+                    >
+                      {isActive ? "●" : "○"}
+                    </span>
+
+                    {isActive
+                      ? "ACTIVE"
+                      : "OFFLINE"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function AdminPanel({ session, role }) {
+  const [users, setUsers] = useState([]);
+  const [pastes, setPastes] = useState([]);
+  const [selectedPaste, setSelectedPaste] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [deletingId, setDeletingId] =
+    useState(null);
+
+  const canAccessAdmin =
+    ADMIN_ROLES.includes(role);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    if (!canAccessAdmin) {
+      setLoading(false);
+      return;
+    }
+
+    loadAdminData();
+  }, [session, role]);
+
+  async function loadAdminData() {
+    setLoading(true);
+    setMessage("");
+
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+    if (profileError) {
+      setMessage(profileError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!ADMIN_ROLES.includes(profile?.role)) {
+      setMessage(
+        "You do not have permission to access the Admin Panel."
+      );
+      setLoading(false);
+      return;
+    }
+
+    const {
+      data: userData,
+      error: userError
+    } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", {
+        ascending: false
+      });
+
+    if (userError) {
+      setMessage(userError.message);
+      setLoading(false);
+      return;
+    }
+
+    const {
+      data: pasteData,
+      error: pasteError
+    } = await supabase
+      .from("pastes")
+      .select("*")
+      .order("created_at", {
+        ascending: false
+      });
+
+    if (pasteError) {
+      setMessage(pasteError.message);
+      setLoading(false);
+      return;
+    }
+
+    setUsers(userData || []);
+    setPastes(pasteData || []);
+    setLoading(false);
+  }
+
+  async function deletePaste(paste) {
+    const confirmed = window.confirm(
+  "Are you sure you want to delete \"" +
+  (paste.title || "Untitled Paste") +
+  "\"?\n\nThis will permanently delete the paste and its uploaded file."
+);
+
+    if (!confirmed) return;
+
+    setDeletingId(paste.id);
+    setMessage("");
+
+    if (paste.file_path) {
+      const {
+        error: storageError
+      } = await supabase.storage
+        .from("pastes")
+        .remove([paste.file_path]);
+
+      if (storageError) {
+        setMessage(
+          "File deletion failed: " +
+          storageError.message
+        );
+
+        setDeletingId(null);
+        return;
+      }
+    }
+
+    const { error } =
+      await supabase
+        .from("pastes")
+        .delete()
+        .eq("id", paste.id);
+
+    if (error) {
+      setMessage(
+        "Paste deletion failed: " +
+        error.message
+      );
+
+      setDeletingId(null);
+      return;
+    }
+
+    setPastes(current =>
+      current.filter(
+        item => item.id !== paste.id
+      )
+    );
+
+    if (
+      selectedPaste?.id === paste.id
+    ) {
+      setSelectedPaste(null);
+    }
+
+    setMessage(
+      "Paste deleted successfully."
+    );
+
+    setDeletingId(null);
+  }
+
+  if (!session) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  if (!canAccessAdmin) {
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="page">
+        <h1>Admin Panel</h1>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <h1>Admin Panel</h1>
+
+      {message && (
+        <p>{message}</p>
+      )}
+
+      <section>
+        <h2>ALL USERS</h2>
+
+        {users.length === 0 ? (
+          <p>No users found.</p>
+        ) : (
+          <div>
+            {users.map(user => (
+              <div
+                key={user.id}
+                style={{
+                  marginBottom: "15px"
+                }}
+              >
+                <strong>
+                  {user.username ||
+                    "No username"}
+                </strong>
+
+                <div>
+                  {user.id}
+                </div>
+
+                <div>
+                  Role: {user.role || "user"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2>ALL PASTES</h2>
+
+        {pastes.length === 0 ? (
+          <p>No pastes found.</p>
+        ) : (
+          <div>
+            {pastes.map(paste => (
+              <div
+                key={paste.id}
+                style={{
+                  marginBottom: "20px"
+                }}
+              >
+                <h3>
+                  {paste.title ||
+                    "Untitled Paste"}
+                </h3>
+
+                <p>
+                  {paste.description ||
+                    "No description"}
+                </p>
+
+                <p>
+                  Visibility:{" "}
+                  {paste.visibility ||
+                    "private"}
+                </p>
+
+                <button
+                  onClick={() =>
+                    setSelectedPaste(
+                      paste
+                    )
+                  }
+                >
+                  READ
+                </button>
+
+                <button
+                  onClick={() =>
+                    deletePaste(
+                      paste
+                    )
+                  }
+                  disabled={
+                    deletingId ===
+                    paste.id
+                  }
+                >
+                  {deletingId ===
+                  paste.id
+                    ? "DELETING..."
+                    : "DELETE"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedPaste && (
+        <section>
+          <h2>PASTE CONTENT</h2>
+
+          <h3>
+            {selectedPaste.title ||
+              "Untitled Paste"}
+          </h3>
+
+          <p>
+            {selectedPaste.description ||
+              "No description"}
+          </p>
+
+          <pre>
+            {selectedPaste.content ||
+              "No content."}
+          </pre>
+
+          <button
+            onClick={() =>
+              setSelectedPaste(null)
+            }
+          >
+            CLOSE
+          </button>
+        </section>
+      )}
+    </div>
   );
 }
 
 function Roster() {
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // ROSTER"
         title="MKP ROSTER 2026"
@@ -1036,35 +1350,38 @@ function Roster() {
       />
 
       <div className="roster">
+        {roster.map(
+          ([name, role], i) => (
+            <div
+              className="roster-row"
+              key={name}
+            >
+              <span className="roster-number">
+                {String(i + 1).padStart(
+                  2,
+                  "0"
+                )}
+              </span>
 
-        {roster.map(([name, role], i) => (
-          <div
-            className="roster-row"
-            key={name}
-          >
+              <strong>{name}</strong>
 
-            <span className="roster-number">
-              {String(i + 1).padStart(2, "0")}
-            </span>
-
-            <strong>{name}</strong>
-
-            <span className="role">
-              {role}
-            </span>
-
-          </div>
-        ))}
-
+              <span className="role">
+                {role}
+              </span>
+            </div>
+          )
+        )}
       </div>
-
     </section>
   );
 }
 
 function Terms({ session }) {
-  const [accepted, setAccepted] = useState(false);
-  const [message, setMessage] = useState("");
+  const [accepted, setAccepted] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
 
   async function accept() {
     if (!session) {
@@ -1079,25 +1396,30 @@ function Terms({ session }) {
       );
     }
 
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({
-        id: session.user.id,
-        tos_accepted: true,
-        tos_accepted_at: new Date().toISOString()
-      });
+    const { error } =
+      await supabase
+        .from("profiles")
+        .upsert({
+          id: session.user.id,
+          tos_accepted: true,
+          tos_accepted_at:
+            new Date().toISOString()
+        });
 
     if (error) {
-      return setMessage(error.message);
+      return setMessage(
+        error.message
+      );
     }
 
     setAccepted(true);
-    setMessage("TOS acceptance saved.");
+    setMessage(
+      "TOS acceptance saved."
+    );
   }
 
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // LEGAL"
         title="TERMS OF SERVICE"
@@ -1105,51 +1427,62 @@ function Terms({ session }) {
       />
 
       <article className="terms panel">
-
         <p>
-          MKP exists to give people a place to post
-          information without worrying about getting censored.
-          We only pull content down when it runs afoul of a
-          rule we've actually written down somewhere.
+          MKP exists to give people a place
+          to post information without
+          worrying about getting censored.
+          We only pull content down when it
+          runs afoul of a rule we've actually
+          written down somewhere.
         </p>
 
         <p>
-          What follows is the current, controlling version of
-          our Terms of Service, plus some general background on
-          how things work. Using MKP at all, in any capacity,
-          means you've agreed to what's written here. Not on
-          board with these terms? Then this isn't the site for
-          you. Nobody is forced to use MKP; it's your call entirely.
+          What follows is the current,
+          controlling version of our Terms of
+          Service, plus some general
+          background on how things work.
+          Using MKP at all, in any capacity,
+          means you've agreed to what's
+          written here. Not on board with
+          these terms? Then this isn't the
+          site for you. Nobody is forced to
+          use MKP; it's your call entirely.
         </p>
 
         <h2>Rules</h2>
 
         <p>
-          Do not use MKP to distribute content that violates
-          applicable law, infringe other people's rights,
-          compromise accounts or systems, or abuse the service.
-          We may remove content or restrict accounts when it
-          violates these written rules or applicable law.
+          Do not use MKP to distribute
+          content that violates applicable
+          law, infringe other people's rights,
+          compromise accounts or systems, or
+          abuse the service. We may remove
+          content or restrict accounts when it
+          violates these written rules or
+          applicable law.
         </p>
 
         <p>
-          By using MKP, you agree to follow these terms.
-          You are responsible for the content you upload and
-          for protecting your account credentials.
+          By using MKP, you agree to follow
+          these terms. You are responsible for
+          the content you upload and for
+          protecting your account credentials.
         </p>
 
         <div className="tos-box">
-
           <label className="check">
             <input
               type="checkbox"
               checked={accepted}
               onChange={e =>
-                setAccepted(e.target.checked)
+                setAccepted(
+                  e.target.checked
+                )
               }
             />
 
-            I have read and agree to the MKP Terms of Service.
+            I have read and agree to the MKP
+            Terms of Service.
           </label>
 
           <button
@@ -1165,11 +1498,8 @@ function Terms({ session }) {
               {message}
             </div>
           )}
-
         </div>
-
       </article>
-
     </section>
   );
 }
@@ -1177,7 +1507,6 @@ function Terms({ session }) {
 function Support() {
   return (
     <section className="content-page">
-
       <PageHeading
         eyebrow="MKP // HELP"
         title="SUPPORT"
@@ -1185,31 +1514,20 @@ function Support() {
       />
 
       <div className="panel support">
-
         <p>
-          Need help with MKP? Join our Telegram support group.
+          Need help with MKP? Join the
+          official MKP Telegram support server.
         </p>
 
-        <div className="button-row">
-
-          <a
-            className="primary-btn"
-            href="https://t.me/+tcuL_pBtobAxYWZh"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            JOIN TELEGRAM SUPPORT
-          </a>
-
-        </div>
-
-        <p className="muted">
-          Click the button above to open the MKP Telegram
-          support group.
-        </p>
-
+        <a
+          className="button"
+          href="https://t.me/+tcuL_pBtobAxYWZh"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          JOIN TELEGRAM SUPPORT
+        </a>
       </div>
-
     </section>
   );
 }
@@ -1221,7 +1539,6 @@ function PageHeading({
 }) {
   return (
     <div className="page-heading">
-
       <div className="eyebrow">
         {eyebrow}
       </div>
@@ -1234,25 +1551,65 @@ function PageHeading({
       </h1>
 
       <p>{subtitle}</p>
-
     </div>
   );
 }
 
 function App() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] =
+    useState(null);
 
+  const [role, setRole] =
+    useState(null);
+
+  /*
+   * Get the logged-in user's profile role.
+   */
   useEffect(() => {
     if (!supabase) return;
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-    });
+    async function loadSession() {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
 
-    const { data: listener } =
+      setSession(session);
+
+      if (session?.user?.id) {
+        const { data } =
+          await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single();
+
+        setRole(data?.role || null);
+      } else {
+        setRole(null);
+      }
+    }
+
+    loadSession();
+
+    const {
+      data: listener
+    } =
       supabase.auth.onAuthStateChange(
-        (_event, next) => {
+        async (_event, next) => {
           setSession(next);
+
+          if (next?.user?.id) {
+            const { data } =
+              await supabase
+                .from("profiles")
+                .select("role")
+                .eq("id", next.user.id)
+                .single();
+
+            setRole(data?.role || null);
+          } else {
+            setRole(null);
+          }
         }
       );
 
@@ -1260,14 +1617,55 @@ function App() {
       listener.subscription.unsubscribe();
   }, []);
 
+  /*
+   * Global online presence.
+   *
+   * Every logged-in user is tracked through
+   * Supabase Realtime. When they close the
+   * browser or disconnect, Supabase removes
+   * their presence automatically.
+   */
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) {
+      return;
+    }
+
+    const channel = supabase.channel(
+      "mkp-online-users",
+      {
+        config: {
+          presence: {
+            key: session.user.id
+          }
+        }
+      }
+    );
+
+    channel.subscribe(async status => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({
+          user_id: session.user.id
+        });
+      }
+    });
+
+    return () => {
+      channel.untrack();
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id]);
+
   return (
-    <Layout session={session}>
-
+    <Layout
+      session={session}
+      role={role}
+    >
       <Routes>
-
         <Route
           path="/"
-          element={<Home session={session} />}
+          element={
+            <Home session={session} />
+          }
         />
 
         <Route
@@ -1281,23 +1679,36 @@ function App() {
         />
 
         <Route
-          path="/reset-password"
-          element={<ResetPassword />}
-        />
-
-        <Route
           path="/add-paste"
-          element={<AddPaste session={session} />}
+          element={
+            <AddPaste
+              session={session}
+            />
+          }
         />
 
         <Route
           path="/pastes"
-          element={<Pastes session={session} />}
+          element={
+            <Pastes
+              session={session}
+            />
+          }
         />
 
         <Route
           path="/users"
           element={<Users />}
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <AdminPanel
+              session={session}
+              role={role}
+            />
+          }
         />
 
         <Route
@@ -1307,16 +1718,18 @@ function App() {
 
         <Route
           path="/terms"
-          element={<Terms session={session} />}
+          element={
+            <Terms
+              session={session}
+            />
+          }
         />
 
         <Route
           path="/support"
           element={<Support />}
         />
-
       </Routes>
-
     </Layout>
   );
 }
