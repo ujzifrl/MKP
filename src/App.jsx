@@ -961,7 +961,8 @@ function Users({ activeUsers = [] }) {
       )}
     </section>
   );
-}function AdminPanel({ session, role }) {
+}
+function AdminPanel({ session, role }) {
   const [users, setUsers] = useState([]);
   const [pastes, setPastes] = useState([]);
   const [selectedPaste, setSelectedPaste] =
@@ -1324,6 +1325,30 @@ function Terms({ session }) {
   const [message, setMessage] =
     useState("");
 
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) {
+      return;
+    }
+
+    async function loadTosStatus() {
+      const { data, error } =
+        await supabase
+          .from("profiles")
+          .select("tos_accepted")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      setAccepted(Boolean(data?.tos_accepted));
+    }
+
+    loadTosStatus();
+  }, [session?.user?.id]);
+
   async function accept() {
     if (!session) {
       return setMessage(
@@ -1338,14 +1363,14 @@ function Terms({ session }) {
     }
 
     const { error } =
-      await supabase
-        .from("profiles")
-        .upsert({
-          id: session.user.id,
-          tos_accepted: true,
-          tos_accepted_at:
-            new Date().toISOString()
-        });
+  await supabase
+    .from("profiles")
+    .update({
+      tos_accepted: true,
+      tos_accepted_at:
+        new Date().toISOString()
+    })
+    .eq("id", session.user.id);
 
     if (error) {
       return setMessage(
