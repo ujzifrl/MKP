@@ -867,22 +867,17 @@ function Users() {
 
   useEffect(() => {
     if (!supabase) {
-      setMessage(
-        "Supabase is not configured yet."
-      );
+      setMessage("Supabase is not configured yet.");
       return;
     }
 
     let channel;
 
     async function loadUsers() {
-      const { data, error } =
-        await supabase
-          .from("profiles")
-          .select("id, username, role, created_at")
-          .order("created_at", {
-            ascending: true
-          });
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, role, created_at")
+        .order("created_at", { ascending: true });
 
       if (error) {
         setMessage(error.message);
@@ -896,33 +891,41 @@ function Users() {
     async function setupPresence() {
       await loadUsers();
 
-      channel = supabase.channel(
-        "mkp-online-users",
-        {
-          config: {
-            presence: {
-              key: crypto.randomUUID()
-            }
+      channel = supabase.channel("mkp-online-users", {
+        config: {
+          presence: {
+            key: "users-page"
           }
         }
-      );
+      });
+
+      const updateActiveUsers = () => {
+        const state = channel.presenceState();
+
+        const ids = Object.values(state)
+          .flat()
+          .map((presence) => presence.user_id)
+          .filter(Boolean);
+
+        setActiveUsers([...new Set(ids)]);
+      };
 
       channel.on(
         "presence",
         { event: "sync" },
-        () => {
-          const state =
-            channel.presenceState();
+        updateActiveUsers
+      );
 
-          const ids = Object.values(state)
-            .flat()
-            .map(user => user.user_id)
-            .filter(Boolean);
+      channel.on(
+        "presence",
+        { event: "join" },
+        updateActiveUsers
+      );
 
-          setActiveUsers([
-            ...new Set(ids)
-          ]);
-        }
+      channel.on(
+        "presence",
+        { event: "leave" },
+        updateActiveUsers
       );
 
       await channel.subscribe();
@@ -953,18 +956,15 @@ function Users() {
 
       {!message && users.length === 0 && (
         <div className="panel">
-          <p className="muted">
-            No users found.
-          </p>
+          <p className="muted">No users found.</p>
         </div>
       )}
 
       {!message && users.length > 0 && (
         <div className="panel">
           <div className="user-list">
-            {users.map(user => {
-              const isActive =
-                activeUsers.includes(user.id);
+            {users.map((user) => {
+              const isActive = activeUsers.includes(user.id);
 
               return (
                 <div
@@ -982,8 +982,7 @@ function Users() {
                 >
                   <div>
                     <strong>
-                      {user.username ||
-                        "Unknown User"}
+                      {user.username || "Unknown User"}
                     </strong>
 
                     <div className="muted">
@@ -998,17 +997,11 @@ function Users() {
                       fontSize: "13px"
                     }}
                   >
-                    <span
-                      style={{
-                        marginRight: "7px"
-                      }}
-                    >
+                    <span style={{ marginRight: "7px" }}>
                       {isActive ? "●" : "○"}
                     </span>
 
-                    {isActive
-                      ? "ACTIVE"
-                      : "OFFLINE"}
+                    {isActive ? "ACTIVE" : "OFFLINE"}
                   </div>
                 </div>
               );
@@ -1019,7 +1012,6 @@ function Users() {
     </section>
   );
 }
-
 function AdminPanel({ session, role }) {
   const [users, setUsers] = useState([]);
   const [pastes, setPastes] = useState([]);
