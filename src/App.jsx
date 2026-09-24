@@ -64,6 +64,11 @@ function Layout({ children, session, role }) {
 
           <NavLink to="/roster">MKP Roster 2026</NavLink>
           <NavLink to="/terms">TOS</NavLink>
+{session && (
+  <NavLink to="/settings">
+    Settings
+  </NavLink>
+)}
           <NavLink to="/support">Support</NavLink>
         </nav>
 
@@ -1317,7 +1322,313 @@ function Roster() {
     </section>
   );
 }
+function Settings({ session }) {
+  const [username, setUsername] = useState("");
+  const [usernameChanges, setUsernameChanges] =
+    useState(0);
 
+  const [newUsername, setNewUsername] =
+    useState("");
+
+  const [newEmail, setNewEmail] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [savingUsername, setSavingUsername] =
+    useState(false);
+
+  const [savingEmail, setSavingEmail] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [error, setError] =
+    useState("");
+
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    async function loadProfile() {
+      const { data, error } =
+        await supabase
+          .from("profiles")
+          .select("username, username_change_count")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      setUsername(data?.username || "");
+      setUsernameChanges(
+        data?.username_change_count || 0
+      );
+
+      setLoading(false);
+    }
+
+    loadProfile();
+  }, [session?.user?.id]);
+
+  async function changeUsername(e) {
+    e.preventDefault();
+
+    if (!supabase || !session?.user?.id) {
+      setError("You must be logged in.");
+      return;
+    }
+
+    setMessage("");
+    setError("");
+
+    if (usernameChanges >= 2) {
+      setError(
+        "You have already used both username changes."
+      );
+      return;
+    }
+
+    setSavingUsername(true);
+
+    const { data, error } =
+      await supabase.rpc(
+        "change_username",
+        {
+          new_username:
+            newUsername.trim()
+        }
+      );
+
+    setSavingUsername(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setUsername(data);
+    setUsernameChanges(
+      usernameChanges + 1
+    );
+    setNewUsername("");
+
+    setMessage(
+      "Username changed successfully."
+    );
+  }
+
+  async function changeEmail(e) {
+    e.preventDefault();
+
+    if (!supabase || !session?.user?.id) {
+      setError("You must be logged in.");
+      return;
+    }
+
+    setMessage("");
+    setError("");
+
+    const email =
+      newEmail.trim().toLowerCase();
+
+    if (!email) {
+      setError("Enter a new email address.");
+      return;
+    }
+
+    if (email === session.user.email) {
+      setError(
+        "That is already your current email."
+      );
+      return;
+    }
+
+    setSavingEmail(true);
+
+    const { error } =
+      await supabase.auth.updateUser({
+        email
+      });
+
+    setSavingEmail(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setNewEmail("");
+
+    setMessage(
+      "A confirmation email has been sent. Check your email to finish changing your address."
+    );
+  }
+
+  if (!session) {
+    return (
+      <section className="content-page">
+        <PageHeading
+          eyebrow="MKP // ACCOUNT"
+          title="SETTINGS"
+          subtitle="Log in to manage your account."
+        />
+
+        <div className="notice">
+          You must be logged in to access settings.
+        </div>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return (
+      <section className="content-page">
+        <PageHeading
+          eyebrow="MKP // ACCOUNT"
+          title="SETTINGS"
+          subtitle="Manage your account."
+        />
+
+        <div className="panel">
+          <p className="muted">
+            Loading settings...
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="content-page">
+      <PageHeading
+        eyebrow="MKP // ACCOUNT"
+        title="SETTINGS"
+        subtitle="Manage your MKP account."
+      />
+
+      <div className="panel">
+        <h2>ACCOUNT</h2>
+
+        <p className="muted">
+          Current username:
+          {" "}
+          <strong>
+            {username || "No username"}
+          </strong>
+        </p>
+
+        <p className="muted">
+          Current email:
+          {" "}
+          <strong>
+            {session.user.email}
+          </strong>
+        </p>
+      </div>
+
+      <div className="panel">
+        <h2>CHANGE USERNAME</h2>
+
+        <p className="muted">
+          You can change your username
+          {" "}
+          {Math.max(
+            0,
+            2 - usernameChanges
+          )}
+          {" "}
+          more time
+          {2 - usernameChanges === 1
+            ? ""
+            : "s"}.
+        </p>
+
+        <form onSubmit={changeUsername}>
+          <input
+            type="text"
+            value={newUsername}
+            onChange={e =>
+              setNewUsername(
+                e.target.value
+              )
+            }
+            placeholder="New username"
+            disabled={
+              usernameChanges >= 2 ||
+              savingUsername
+            }
+          />
+
+          <button
+            className="primary-btn"
+            type="submit"
+            disabled={
+              usernameChanges >= 2 ||
+              savingUsername ||
+              !newUsername.trim()
+            }
+          >
+            {savingUsername
+              ? "SAVING..."
+              : "CHANGE USERNAME"}
+          </button>
+        </form>
+      </div>
+
+      <div className="panel">
+        <h2>CHANGE EMAIL</h2>
+
+        <p className="muted">
+          Enter your new email address.
+          Supabase will send a confirmation
+          email to complete the change.
+        </p>
+
+        <form onSubmit={changeEmail}>
+          <input
+            type="email"
+            value={newEmail}
+            onChange={e =>
+              setNewEmail(
+                e.target.value
+              )
+            }
+            placeholder="New email address"
+            disabled={savingEmail}
+          />
+
+          <button
+            className="primary-btn"
+            type="submit"
+            disabled={
+              savingEmail ||
+              !newEmail.trim()
+            }
+          >
+            {savingEmail
+              ? "SENDING..."
+              : "CHANGE EMAIL"}
+          </button>
+        </form>
+      </div>
+
+      {(message || error) && (
+        <div className="form-message">
+          {message || error}
+        </div>
+      )}
+    </section>
+  );
+}
 function Terms({ session }) {
   const [accepted, setAccepted] =
     useState(false);
@@ -1733,5 +2044,14 @@ const [activeUsers, setActiveUsers] =
     </Layout>
   );
 }
-
+<Route
+  path="/settings"
+  element={
+    session ? (
+      <Settings session={session} />
+    ) : (
+      <Navigate to="/login" replace />
+    )
+  }
+/>
 export default App;
